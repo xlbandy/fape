@@ -1,0 +1,168 @@
+// Location of facilities. Facilities include, ds - docking station, p - panel, pip - pipeline.
+type Location;
+
+// Location of Robot.NavLocation includes, ds, p, pip, valve.location
+type NavLocation < Location;
+
+
+type Pipeline with{
+    variable NavLocation pips;
+    variable NavLocation pipe;
+    variable boolean inspected;
+};
+
+type Status;
+
+
+type Object < Location with{
+    variable NavLocation location;
+};
+
+type Tools < Object;
+instance Tools empty;
+
+type Valves < Object with{
+    variable boolean inspected;
+    variable boolean operated;
+    variable Status switch;
+    variable Tools need;
+};
+
+
+// robot with location, tooldock, face
+type Robots with {
+    variable NavLocation location;
+    variable Tools tooldock; // ignore the back tool dock temporarly.
+    variable Location face;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+//                                     primitives                                             //
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+// move the robot from to .
+action goto (Robots r, NavLocation to){
+    motivated;
+    duration := 10; // duration should be estimated (or calculated) based on distance between from and to.
+    constant NavLocation from;
+    [start] r.location == from;
+    [start] r.face == from;
+    from != to;
+    [all] {
+        r.location == from :-> to;
+        r.face == from :-> to;
+    };
+};
+
+// Focus the camera on the object that needs to be manipulated.
+action locate (Robots r, Valves lv, NavLocation lp) {
+    motivated;
+    duration := 5; // this should be estimated based on actual operation.
+    [start] r.face == lp;
+    [all]{
+        lv.location == lp;
+        r.location == lp;
+        r.face == lp :-> lv;
+    };
+};
+
+// Inspect the object and after that shift teh camera focus from the object back to the facility and waiting for next
+//locate action.
+action inspect (Robots r, Valves iv, NavLocation ip) {
+    motivated;
+    duration := 5; //should estimated based on the actual operation.
+    [all]{
+        iv.location == ip;
+        r.location == ip;
+        iv.inspected == false :-> true;
+        r.face == iv :-> ip;
+    };
+};
+
+// NavLocation must be panel.
+action turn (Robots r, Valves tv, Tools tt, NavLocation tp){
+    motivated;
+    duration := 5; //should be estimated from actual operation.
+    [all]{
+        r.location == tp;
+        tv.location == tp;
+        r.tooldock == tt;
+        tv.need == tt;
+        tv.operated == false :-> true;
+        r.face == tv :-> tp;
+    };
+};
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+//                                         tasks                                              //
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// inspect valves on the panel.
+action gotoinspectValves (Robots r, Valves v, NavLocation a){
+    motivated;
+    [start] v.inspected == false;
+    [all] v.location == a;
+    :decomposition{
+        r.location != a;
+        [all] contains{
+            s1: goto(r, a);
+            s2: locate(r,v,a);
+            s3: inspect(r,v,a);
+        };
+        end(s1) <= start(s2);
+        end(s2) <= start(s3);
+    };
+    :decomposition{
+        r.location == a;
+        r.face != v;
+        [all] contains {
+            s1: locate(r,v,a);
+            s2: inspect(r,v,a);
+        };
+        end(s1) <= start(s2);
+    };
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
