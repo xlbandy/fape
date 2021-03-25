@@ -1,0 +1,60 @@
+
+// Instances of typed objects.
+instance NavLocation ds, wh, p1, p2, pip1s, pip1e;
+// what if set ds and wh as constant?
+//instance Pipeline pip1;
+instance Status on, off;
+instance Tools man13, man24; // man13 used for v1 and v3. man24 used for v2 and v4.
+instance Valves v1, v2, v3, v4; // on p1 panel
+instance Robots uid;
+
+//pip1.pips := pip1s;
+//pip1.pipe := pip1e;
+//pip1.inspected := false;
+
+// Valces configuration
+v1.location := p1;
+v2.location := p1;
+v3.location := p1;
+v4.location := p2;
+
+v1.need := man13;
+v2.need := man24;
+v3.need := man13;
+v4.need := man24;
+
+[start]{
+man13.location := wh;
+man24.location := wh;
+
+v1.inspected := false;
+v2.inspected := false;
+v3.inspected := false;
+v4.inspected := false;
+
+v1.operated := false; // turn off the v1.
+v2.operated := true;
+v3.operated := true;
+v4.operated := true;
+
+v1.switch := on;
+v2.switch := on;
+v3.switch := on;
+v4.switch := on;
+
+uid.location := ds;
+uid.tooldock := empty;
+uid.face := ds;
+
+};
+
+[all] contains{
+    s1: gotoinspectValves(uid,v2,p1);
+    //s4: inspectValves(uid,v2,p1);
+    //s2: gototrackPipeline(uid,pip1s,pip1e);
+    s2: gotoinspectValves(uid,v4,p2);
+    s3: gotoinspectValves(uid,v1,p1);
+};
+    end(s1) <= start(s2);
+    // But what if we just want s2 conduct as the 2nd task, and don't mind the order of other tasks.
+    // ANML relative ordering
