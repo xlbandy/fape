@@ -1,0 +1,309 @@
+// Location of facilities. Facilities include, ds - docking station, wh - warehouse, p - panel, pip - pipeline.
+type Location;
+
+// Location of Robot.NavLocation includes, ds, wh, p, pip, valve.location
+type NavLocation < Location;
+
+
+type Pipeline with{
+    variable NavLocation pips;
+    variable NavLocation pipe;
+    variable boolean inspected;
+};
+
+type Status;
+
+
+type Object < Location with{
+    variable NavLocation location;
+};
+
+type Tools < Object;
+instance Tools empty;
+
+type Valves < Object with{
+    variable boolean inspected;
+    variable boolean operated;
+    variable Status switch;
+    variable Tools need;
+};
+
+
+// robot with location, tooldock, face
+type Robots with {
+    variable NavLocation location;
+    variable Tools tooldock; // ignore the back tool dock temporarly.
+    variable Location face;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+//                                     primitives                                             //
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+// move the robot from to .
+action move (Robots r, NavLocation from, NavLocation to){
+    motivated;
+    duration := 10; // duration should be estimated (or calculated) based on distance between from and to.
+    [all] {
+        r.location == from :-> to;
+        r.face == from :-> to;
+    };
+};
+
+// Focus the camera on the object that needs to be manipulated.
+action locate (Robots r, Valves lv, NavLocation lp) {
+    motivated;
+    duration := 5; // this should be estimated based on actual operation.
+    [start] r.face == lp;
+    [all]{
+        lv.location == lp;
+        r.location == lp;
+        r.face == lp :-> lv;
+    };
+};
+
+// Inspect the object and after that shift teh camera focus from the object back to the facility and waiting for next
+//locate action.
+action inspect (Robots r, Valves iv, NavLocation ip) {
+    motivated;
+    duration := 5; //should estimated based on the actual operation.
+    [all]{
+        iv.location == ip;
+        r.location == ip;
+        iv.inspected == false :-> true;
+        r.face == iv :-> ip;
+    };
+};
+
+// NavLocation must be warehouse - wh
+// How to handle r.face with tools?
+action uninstall (Robots r, NavLocation wh) {
+    motivated;
+    duration := 5; // should be estimated based on actual operation.
+    constant Tools prevTool;
+    [all]{
+        r.location == wh;
+        r.tooldock == prevTool :-> empty;
+        prevTool.location == r :-> wh;
+    };
+};
+
+// NavLocation must be warehouse - wh
+// How to handle r.face with tools?
+action install (Robots r, Tools it, NavLocation wh) {
+    motivated;
+    duration := 5; // should be estimated based on actual operation.
+    [all]{
+        r.location == wh;
+        r.tooldock == empty :-> it;
+        it.location == wh :-> r;
+    };
+};
+
+// NavLocation must be panel.
+action turn (Robots r, Valves tv, Tools tt, NavLocation tp){
+    motivated;
+    duration := 5; //should be estimated from actual operation.
+    [all]{
+        r.location == tp;
+        tv.location == tp;
+        r.tooldock == tt;
+        tv.need == tt;
+        tv.operated == false :-> true;
+        r.face == tv :-> tp;
+    };
+};
+
+// NavLocation must be a pipeline.
+action track (Robots r, NavLocation pip) {
+    motivated;
+    duration := 10; // should be estimated based on the uid speed and pipeline length.
+    [all]{
+        r.location == pip;
+    };
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+//                                         tasks                                              //
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+// inspect valves on the panel.
+action inspectValves (Robots r, Valves v, NavLocation a){
+    motivated;
+    [start] v.inspected == false;
+    [all] v.location == a;
+    :decomposition{
+        r.location != a;
+        constant NavLocation prevRloc;
+        [all] contains{
+            s1: move(r, prevRloc, a);
+            s2: locate(r,v,a);
+            s3: inspect(r,v,a);
+        };
+        end(s1) <= start(s2);
+        end(s2) <= start(s3);
+    };
+    :decomposition{
+        r.location == a;
+        r.face != v;
+        [all] contains {
+            s1: locate(r,v,a);
+            s2: inspect(r,v,a);
+        };
+        end(s1) <= start(s2);
+    };
+};
+
+// NavLocation a must be warehouse - wh.
+action preTools (Robots r, NavLocation wh, Tools t){
+    motivated;
+    :decomposition{
+        r.location == wh;
+        r.tooldock == empty;
+        [all]{
+            install(r,t,wh);
+        };
+    };
+    :decomposition{
+        r.location == wh;
+        r.tooldock != t;
+        [all]{
+            s1: uninstall(r,wh);
+            s2: install(r,t,wh);
+        };
+        end(s1) <= start(s2);
+    };
+    :decomposition{
+        r.location != wh;
+        r.tooldock == empty;
+        constant NavLocation prevRloc;
+        [all]{
+            s1: move(r,prevRloc,wh);
+            s2: install(r,t,wh);
+        };
+        end(s1) <= start(s2);
+    };
+    :decomposition{
+        r.location != wh;
+        r.tooldock != t;
+        constant NavLocation prevRloc;
+        [all]{
+            s1: move(r,prevRloc,wh);
+            s2: uninstall(r,wh);
+            s3: install(r,t,wh);
+        };
+        end(s1) <= start(s2);
+        end(s2) <= start(s3);
+    };
+};
+
+// Navlocation must be warehouse - wh.
+action turnValves (Robots r, Valves v, Tools t, NavLocation p, NavLocation wh1){
+    motivated;
+    [start] v.operated == false;
+    [all]{
+        v.location == p;
+        v.need == t;
+    };
+    :decomposition{
+        r.location == p;
+        r.tooldock == t;
+        [all]{
+            s1: locate(r,v,p);
+            s2: turn(r,v,t,p);
+        };
+        end(s1) <= start(s2);
+    };
+    :decomposition{
+        r.location != p;
+        r.tooldock == t;
+        constant NavLocation prevRloc;
+        [all]{
+            s1: move(r,prevRloc,p);
+            s2: locate(r,v,p);
+            s3: turn(r,v,t,p);
+        };
+        end(s1) <= start(s2);
+        end(s2) <= start(s3);
+    };
+    :decomposition{
+        r.tooldock != t;
+        [all]{
+            s1: preTools(r,wh1,t);
+            s2: move(r,wh1,p);
+            s3: locate(r,v,p);
+            s4: turn(r,v,t,p);
+        };
+        end(s1) <= start(s2);
+        end(s2) <= start(s3);
+        end(s3) <= start(s4);
+    };
+};
+
+action trackPipeline (Robots r, Pipeline pip) {
+    motivated;
+    :decomposition{
+        r.location == pip;
+        [all]{
+            track(r,pip);
+        };
+    };
+    :decomposition{
+        r.location != pip;
+        constant NavLocation prevRloc;
+        [all]{
+            move(r,prevRloc,pip);
+            track(r,pip);
+        };
+    };
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
